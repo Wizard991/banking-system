@@ -1,0 +1,29 @@
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Maven
+target/
+*/target/
+
+# Build files
+*.class
+
+# Logs
+*.log
+
+# Environment / secrets
+.env
+.env.*
+application-local.yml
+application-local.yaml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+
+# Temporary files
+*.tmp
