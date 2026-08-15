@@ -41,6 +41,8 @@ public class AccountEventConsumer {
     }
 
 
+
+
     /*
         * Consume fraud.detected event from kafta
         * Blocks the flagged account.

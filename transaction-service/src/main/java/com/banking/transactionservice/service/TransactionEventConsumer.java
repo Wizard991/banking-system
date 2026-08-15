@@ -30,6 +30,11 @@ public class TransactionEventConsumer {
 
     private static final  String TRANSACTION_OTP_GENERATED_TOPIC = "transaction.otp.generated";
 
+    /**
+     * consume verification.required
+     * Generate OTP and ask user to verify
+     * @param payload
+     */
 
     @KafkaListener(topics = "verification.required")
     public void consumeVerificationRequired(@Payload Map<String, Object> payload){
