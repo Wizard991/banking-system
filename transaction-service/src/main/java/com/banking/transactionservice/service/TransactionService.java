@@ -6,6 +6,7 @@ import com.banking.transactionservice.dto.TransferRequest;
 import com.banking.transactionservice.entity.Transaction;
 import com.banking.transactionservice.entity.TransactionStatus;
 import com.banking.transactionservice.entity.TransactionType;
+import com.banking.transactionservice.event.TransactionCompletedEvent;
 import com.banking.transactionservice.event.TransactionInitiatedEvent;
 import com.banking.transactionservice.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,7 @@ public class TransactionService  {
     private static final String TRANSACTION_INITIATED_TOPIC = "transaction.initiated";
     private static final String TRANSACTION_COMPLETED_TOPIC = "transaction.completed";
     private static final String TRANSACTION_REFUNDED_TOPIC = "transaction.refunded";
+    private static final String FRAUD_DETECTED_TOPIC = "fraud.detected";
 
     /*
       * SAGA STEP-1: Initiate Transfer
@@ -119,7 +121,7 @@ public class TransactionService  {
         if(!storedOtp.equals(otp)){
             log.warn("Wrong OTP - blocking account and refunding: {}", transactionID);
             redisTemplate.delete(otpKey);
-            blockAccountAnndCompensate(transaction,"Wrong OTP entered - transaction cancelled "+ "account blocked for security");
+            blockAccountAndCompensate(transaction,"Wrong OTP entered - transaction cancelled "+ "account blocked for security");
             return mapToResponse(transaction);
         }
 
@@ -158,6 +160,42 @@ public class TransactionService  {
 
         log.info("SAGA COMPENSATION COMPLETE - {} refunded to  {}",
                 transaction.getAmount(), transaction.getSenderAccountNumber());
+    }
+
+
+
+    private void blockAccountAndCompensate(Transaction transaction, String reason){
+
+        // publish fraud.detected -> Account Service will block Account
+        Map<String, Object> fraudEvent = new HashMap<>();
+        fraudEvent.put("transactionId", transaction.getId());
+        fraudEvent.put("accountNumber",transaction.getSenderAccountNumber());
+        fraudEvent.put("reason",reason);
+
+        kafkaTemplate.send(FRAUD_DETECTED_TOPIC, transaction.getSenderAccountNumber(), fraudEvent);
+        log.warn("fraud.detected published - account: {} will be blocked, kindly contact to the bank",transaction.getSenderAccountNumber());
+
+        // SAGA COMPENSATION - refund sender
+        compensateTransaction(transaction, reason);
+    }
+
+
+    private void completeTransaction(Transaction transaction){
+        transaction.setStatus(TransactionStatus.COMPLETED);
+        transaction.setCompletedAt(LocalDateTime.now());
+        transactionRepository.save(transaction);
+
+        TransactionCompletedEvent completedEvent = new TransactionCompletedEvent(
+                transaction.getId(),
+                transaction.getSenderAccountNumber(),
+                transaction.getReceiverAccountNumber(),
+                transaction.getAmount(),
+                transaction.getDescription()
+        );
+
+        kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC,transaction.getId(),completedEvent);
+
+        log.info("SAGA COMPLETE: Transaction {} completed",transaction.getId());
     }
 
     private TransactionResponse mapToResponse(Transaction transaction){
